@@ -1,7 +1,7 @@
 # TCP_server
 
 This is a single-thread asynchronize tcp server.
-There's a dummy command line execution to imitate a real api call.
+There's a dummy command line execution pretending to be a real api call.
 
 ## Execution
 
@@ -12,7 +12,11 @@ Run the client with:
 `python3 client.py [server ip address] [port]`
 
 ## Benchmark
+
 Benchmark the server with `make -j`
 
 ## Performance
-The server processes around 450 requests per second on Fedora 30, i7-8705g 
+
+The server processes around 700 requests per second on Fedora 30, i7-8705g.
+
+Note that the number of client processes will have an impact on the number of requests received by the server. 

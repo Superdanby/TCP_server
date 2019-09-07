@@ -1,5 +1,26 @@
 import asyncio
 import argparse
+import sys
+import queue
+
+cnt = 0
+period = 10
+q = queue.Queue(maxsize=period)
+qsize = 0
+period_cnt = 0
+
+async def statistics():
+    global cnt, period_cnt, qsize
+    while True:
+        if qsize == period:
+            period_cnt = period_cnt - q.get()
+            qsize = qsize - 1
+        period_cnt = period_cnt + cnt
+        qsize = qsize + 1
+        q.put(cnt)
+        cnt = 0
+        print(f"Processed per second: {period_cnt / qsize}\n", file=sys.stderr)
+        await asyncio.sleep(1)
 
 async def proton_api(message, cmd='printf'):
     proc = await asyncio.create_subprocess_shell(
@@ -17,6 +38,7 @@ async def proton_api(message, cmd='printf'):
     return stdout
 
 async def handle_query(reader, writer):
+    global cnt
     data = await reader.read(100000000000)
     message = data.decode()
     addr = writer.get_extra_info('peername')
@@ -34,6 +56,7 @@ async def handle_query(reader, writer):
 
     print("Close the connection")
     writer.close()
+    cnt = cnt + 1
 
 async def main(address='127.0.0.1', port=8888):
     server = await asyncio.start_server(
@@ -42,6 +65,7 @@ async def main(address='127.0.0.1', port=8888):
 
     addr = server.sockets[0].getsockname()
     print(f'Serving on {addr}')
+    asyncio.create_task(statistics())
 
     async with server:
         await server.serve_forever()
