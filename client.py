@@ -69,9 +69,9 @@ async def main(server='127.0.0.1', port=8888, persistant=0):
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
-parser.add_argument('persistant', type=int, default=[1], nargs=1, help='number of messages transmitted before closing connection')
+parser.add_argument('persistant', type=int, default=0, nargs='?', help='number of messages transmitted before closing connection')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    asyncio.run(main(server=args.address[0], port=args.port[0], persistant=args.persistant[0]))
+    asyncio.run(main(server=args.address[0], port=args.port[0], persistant=args.persistant))

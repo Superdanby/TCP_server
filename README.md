@@ -6,14 +6,14 @@ There's a dummy command line execution pretending to be a real api call.
 ## Execution
 
 Run the server with:
-`python3 server.py [server ip address] [port]`
+`python3 server.py [server ip address] [port] [--persistant(specify this option when messages per connection is not 0)]`
 
 Run the client with:
-`python3 client.py [server ip address] [port]`
+`python3 client.py [server ip address] [port] [messages per connection, defaults to 0]`
 
 ## Benchmark
 
-Benchmark the server with `make` or `./benchmark.sh [server ip address] [port] [period in seconds]`
+Benchmark the server with `make benchmark`, `make benchmark_persistant`, or `./benchmark.sh [server ip address] [port] [period in seconds] [messages per connection]`
 
 ## Performance
 
