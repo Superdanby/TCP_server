@@ -2,20 +2,24 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 )
 
 var (
 	// concurrentRequests = runtime.NumCPU()
-	concurrentRequests = 10
-	iteration          = 500
+	concurrentRequests = 5
+	iteration          = 20000
 
 	serverIPAddress = "127.0.0.1"
 	serverPort      = ":8888"
+
+	isPersistenceMode = true
 )
 
 func parseCommandLineArguments() {
@@ -30,6 +34,13 @@ func parseCommandLineArguments() {
 		case 2:
 			// port
 			serverPort = ":" + arg
+		case 3:
+			// iteration
+			tmp, err := strconv.Atoi(arg)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			iteration = tmp
 		}
 	}
 
@@ -56,6 +67,48 @@ func hit(blocking chan bool) {
 	log.Println("Start")
 	runtime.LockOSThread()
 
+	if isPersistenceMode {
+		persistence()
+	} else {
+		nonPersistence()
+	}
+
+	blocking <- true
+}
+
+func persistence() {
+	// connect to this socket
+	conn, err := net.Dial("tcp", serverIPAddress+serverPort)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	reader := bufio.NewReader(conn)
+
+	for i := 0; i < iteration; i++ {
+		// send to socket
+		str := "GET 200\n"
+		// n, err := conn.Write([]byte(str))
+		_, err = conn.Write([]byte(str))
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// log.Println("Write byte", n)
+
+		// listen for reply
+		message, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Print(message)
+	}
+
+	err = conn.Close()
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func nonPersistence() {
 	for i := 0; i < iteration; i++ {
 		// connect to this socket
 		conn, err := net.Dial("tcp", serverIPAddress+serverPort)
@@ -84,28 +137,4 @@ func hit(blocking chan bool) {
 			log.Fatalln(err)
 		}
 	}
-
-	// for i := 0; i < 5000; i++ {
-	// 	str := "GET 200\n"
-	// 	reader := strings.NewReader(str)
-	// 	// resp, err := http.Get("http://127.0.0.1:8888")
-	// 	// http.Post("http://127.0.0.1:8888", "text/plain", reader)
-	// 	resp, err := http.Post("http://127.0.0.1:8888", "text/plain", reader)
-	// 	if err != nil {
-	// 		log.Fatalln(err)
-	// 	}
-	// 	defer resp.Body.Close()
-	// 	// log.Println("Response status:", resp.Status)
-
-	// 	scanner := bufio.NewScanner(resp.Body)
-	// 	for i := 0; scanner.Scan() && i < 5; i++ {
-	// 		log.Println(scanner.Text())
-	// 	}
-
-	// 	if err := scanner.Err(); err != nil {
-	// 		log.Fatalln(err)
-	// 	}
-	// }
-
-	blocking <- true
 }

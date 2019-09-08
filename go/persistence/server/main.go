@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -17,7 +18,7 @@ var (
 	active  int64
 
 	maxConcurrentRequests = 1
-	doSystemCall          = true
+	doSystemCall          = false
 
 	serverIPAddress = "127.0.0.1"
 	serverPort      = ":8888"
@@ -35,6 +36,9 @@ func parseCommandLineArguments() {
 		case 2:
 			// port
 			serverPort = ":" + arg
+		case 3:
+			// is persistence enabled
+			continue
 		}
 	}
 }
@@ -71,9 +75,9 @@ func main() {
 	// start taking connections
 	log.Println("Server starts")
 	for {
-		log.Println("Waiting for chan...")
+		// log.Println("Waiting for chan...")
 		maxConcurrencyLimit <- true
-		log.Println("Waiting for TCP...")
+		// log.Println("Waiting for TCP...")
 		conn, err := server.AcceptTCP()
 		if err != nil {
 			log.Fatalln(err)
@@ -85,7 +89,7 @@ func main() {
 
 func stat() {
 	for {
-		log.Printf("Request received %d, active %d\n", counter, atomic.LoadInt64(&active))
+		log.Printf("Total connections since start %d, currently active connections %d\n", counter, atomic.LoadInt64(&active))
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -136,15 +140,16 @@ func handler(_conn *net.TCPConn, maxConcurrencyLimit <-chan bool) {
 	log.Printf("new connection id %d, remote %s, local %s\n", conn.getID(), conn.RemoteAddr(), conn.LocalAddr().String())
 
 	defer func(conn *connection) {
-		id := conn.getID()
-		remoteAddr := conn.RemoteAddr()
-		log.Printf("closing connection %d, %s\n", id, remoteAddr)
+		// id := conn.getID()
+		// remoteAddr := conn.RemoteAddr()
+		// log.Printf("closing connection %d, %s\n", id, remoteAddr)
 		err := conn.Close()
 		if err != nil {
 			log.Fatalln("closing connection error", err)
 		}
-		log.Printf("connection %d, %s closed\n", id, remoteAddr)
-		log.Println("channel freed", <-maxConcurrencyLimit)
+		// log.Printf("connection %d, %s closed\n", id, remoteAddr)
+		<-maxConcurrencyLimit
+		log.Println("channel freed")
 		atomic.AddInt64(&active, -1)
 	}(conn)
 
@@ -181,9 +186,10 @@ func (c *connection) decodeConnection() error {
 	scanner := bufio.NewScanner(c.TCPConn)
 
 	// Read from connection with line split
+	// TODO: max idle time?
 	for scanner.Scan() {
 		buf := scanner.Bytes()
-		log.Printf("decoded = %s", string(buf))
+		fmt.Printf("%s\n", string(buf))
 
 		if doSystemCall {
 			systemCall()
