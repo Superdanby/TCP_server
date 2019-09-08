@@ -18,6 +18,7 @@ var (
 
 const (
 	maxConcurrentRequests = 1
+	doSystemCall          = true
 )
 
 func main() {
@@ -83,7 +84,7 @@ func newServer(address string) (server *net.TCPListener, err error) {
 	return tcpListener, nil
 }
 
-func systemCallRunner(done chan<- bool) {
+func systemCall() {
 	log.Println("system call")
 	// binary, err := exec.LookPath("ls")
 	// if err != nil {
@@ -107,14 +108,6 @@ func systemCallRunner(done chan<- bool) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	done <- true
-}
-
-func systemCall() {
-	done := make(chan bool)
-	go systemCallRunner(done)
-	<-done
 }
 
 func handler(_conn *net.TCPConn, maxConcurrencyLimit <-chan bool) {
@@ -172,6 +165,10 @@ func (c *connection) decodeConnection() error {
 		buf := scanner.Bytes()
 		log.Printf("decoded = %s", string(buf))
 
+		if doSystemCall {
+			systemCall()
+		}
+
 		// send out reply
 		// n, err := c.send("200", "foo")
 		_, err := c.send("200", "foo")
@@ -179,8 +176,6 @@ func (c *connection) decodeConnection() error {
 			log.Fatalln("send response error", err)
 		}
 		// log.Println("Response count", n)
-
-		systemCall()
 	}
 	if scanner.Err() != nil {
 		log.Fatalln("scanner error", scanner.Err())

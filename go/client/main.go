@@ -11,7 +11,7 @@ import (
 var (
 	// concurrentRequests = runtime.NumCPU()
 	concurrentRequests = 10
-	iteration          = 1000
+	iteration          = 500
 	addr               = "127.0.0.1:8888"
 )
 
