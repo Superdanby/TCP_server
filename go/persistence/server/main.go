@@ -17,7 +17,7 @@ var (
 	counter uint64
 	active  int64
 
-	maxConcurrentRequests = 1
+	maxConcurrentRequests = 100
 	doSystemCall          = false
 
 	serverIPAddress = "127.0.0.1"
