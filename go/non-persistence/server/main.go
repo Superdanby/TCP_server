@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"sync/atomic"
 	"time"
@@ -14,14 +15,33 @@ import (
 var (
 	counter uint64
 	active  int64
-)
 
-const (
 	maxConcurrentRequests = 1
 	doSystemCall          = true
+
+	serverIPAddress = "127.0.0.1"
+	serverPort      = ":8888"
 )
 
+func parseCommandLineArguments() {
+	args := os.Args
+	for i, arg := range args {
+		switch i {
+		case 0:
+			continue
+		case 1:
+			// server ip address
+			serverIPAddress = arg
+		case 2:
+			// port
+			serverPort = ":" + arg
+		}
+	}
+}
+
 func main() {
+	parseCommandLineArguments()
+
 	// init
 	counter = 0
 	active = 0
@@ -34,7 +54,7 @@ func main() {
 	go stat()
 
 	// setup server
-	server, err := newServer(":8888")
+	server, err := newServer(serverPort)
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 )
 
@@ -12,10 +13,31 @@ var (
 	// concurrentRequests = runtime.NumCPU()
 	concurrentRequests = 10
 	iteration          = 500
-	addr               = "127.0.0.1:8888"
+
+	serverIPAddress = "127.0.0.1"
+	serverPort      = ":8888"
 )
 
+func parseCommandLineArguments() {
+	args := os.Args
+	for i, arg := range args {
+		switch i {
+		case 0:
+			continue
+		case 1:
+			// server ip address
+			serverIPAddress = arg
+		case 2:
+			// port
+			serverPort = ":" + arg
+		}
+	}
+
+}
+
 func main() {
+	parseCommandLineArguments()
+
 	// runtime.GOMAXPROCS(1)
 	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 100 // connect: can't assign requested address
 
@@ -36,7 +58,7 @@ func hit(blocking chan bool) {
 
 	for i := 0; i < iteration; i++ {
 		// connect to this socket
-		conn, err := net.Dial("tcp", addr)
+		conn, err := net.Dial("tcp", serverIPAddress+serverPort)
 		if err != nil {
 			log.Fatalln(err)
 		}
