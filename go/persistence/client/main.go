@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	// concurrentRequests = runtime.NumCPU()
-	concurrentRequests = 5
-	iteration          = 20000
+	concurrentRequests = runtime.NumCPU() - 1
+	// concurrentRequests = 5
+	iteration = 20000
 
 	serverIPAddress = "127.0.0.1"
 	serverPort      = ":8888"
