@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os/exec"
 	"sync/atomic"
 	"time"
 )
@@ -82,6 +83,40 @@ func newServer(address string) (server *net.TCPListener, err error) {
 	return tcpListener, nil
 }
 
+func systemCallRunner(done chan<- bool) {
+	log.Println("system call")
+	// binary, err := exec.LookPath("ls")
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	// log.Println(binary)
+	// args := []string{"-a", "-l", "-h"}
+	// env := os.Environ()
+	// err = syscall.Exec(binary, args, env)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+
+	args := []string{"-a", "-l", "-h"}
+	cmd := exec.Command("ls", args...)
+	err := cmd.Start()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	err = cmd.Wait()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	done <- true
+}
+
+func systemCall() {
+	done := make(chan bool)
+	go systemCallRunner(done)
+	<-done
+}
+
 func handler(_conn *net.TCPConn, maxConcurrencyLimit <-chan bool) {
 	atomic.AddInt64(&active, 1)
 	conn := newConnection(_conn)
@@ -144,6 +179,8 @@ func (c *connection) decodeConnection() error {
 			log.Fatalln("send response error", err)
 		}
 		// log.Println("Response count", n)
+
+		systemCall()
 	}
 	if scanner.Err() != nil {
 		log.Fatalln("scanner error", scanner.Err())
