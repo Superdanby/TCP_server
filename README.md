@@ -1,7 +1,10 @@
 # TCP_server
 
 This is a single-thread asynchronize tcp server.
+
 There's a dummy command line execution pretending to be a real api call.
+
+[Notes](https://hackmd.io/UbJ_ZsLbT7KS1Fs6dt55Qg?both)
 
 ## Execution
 
