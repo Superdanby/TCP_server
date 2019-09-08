@@ -58,9 +58,35 @@ async def handle_query(reader, writer):
     writer.close()
     cnt = cnt + 1
 
-async def main(address='127.0.0.1', port=8888):
-    server = await asyncio.start_server(
-        handle_query, address, port)
+async def handle_query_persistant(reader, writer):
+    global cnt
+    while True:
+        data = await reader.read(100000000000)
+        message = data.decode()
+        if message == "close":
+            break
+        addr = writer.get_extra_info('peername')
+        cmprs = writer.get_extra_info('compression')
+
+        # print(f"Received {message!r} from {addr!r}")
+        print(f"Received {message!r} from {addr!r}, compression: {cmprs}")
+
+        # wait for response from Proton API
+        response = await proton_api(message)
+        # response = "yee".encode()
+
+        writer.write(response)
+        await writer.drain()
+        cnt = cnt + 1
+
+    print("Close the connection")
+    writer.close()
+
+async def main(address='127.0.0.1', port=8888, persistant=False):
+    if persistant:
+        server = await asyncio.start_server(handle_query_persistant, address, port)
+    else:
+        server = await asyncio.start_server(handle_query, address, port)
 
 
     addr = server.sockets[0].getsockname()
@@ -74,9 +100,10 @@ async def main(address='127.0.0.1', port=8888):
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
+parser.add_argument('--persistant', action='store_true', help='open connection until client sends "close"')
 args = parser.parse_args()
 
 # print(args)
 
 if __name__ == '__main__':
-    asyncio.run(main(address=args.address[0], port=args.port[0]))
+    asyncio.run(main(address=args.address[0], port=args.port[0], persistant=args.persistant))

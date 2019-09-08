@@ -32,17 +32,46 @@ async def tcp_echo_client(message, server=None, port=None):
     writer.close()
     await writer.wait_closed()
 
-async def main(server='127.0.0.1', port=8888):
+async def tcp_echo_client_persistant(message, server=None, port=None, persistant=10000):
+    global tcnt, rcnt
+    reader, writer = await asyncio.open_connection(
+        server, port)
+
+    while True:
+        # print(f'Send: {message!r}')
+        writer.write(message.encode())
+        await writer.drain()
+        tcnt = tcnt + 1
+
+        data = await reader.read(100000000000)
+        # print(f'Received: {data.decode()!r}')
+        rcnt = rcnt + 1
+
+        if tcnt % persistant == 0:
+            writer.write("close".encode())
+            tcnt = tcnt + 1
+            break
+
+    # print('Close the connection')
+    writer.close()
+    await writer.wait_closed()
+
+async def main(server='127.0.0.1', port=8888, persistant=0):
     asyncio.create_task(statistics())
     while True:
-        await tcp_echo_client('GET foo\n', server=server, port=port)
+        if persistant != 0:
+            await tcp_echo_client_persistant('GET foo\n', server=server, port=port)
+        else:
+            await tcp_echo_client('GET foo\n', server=server, port=port)
+
 
 # get server address and port
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
-parser.add_argument('limit', default=[-1], type=int, nargs='?', help='stream reader reads up to n bytes, default has no limit')
+parser.add_argument('persistant', type=int, default=[1], nargs=1, help='number of messages transmitted before closing connection')
+
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    asyncio.run(main(server=args.address[0], port=args.port[0]))
+    asyncio.run(main(server=args.address[0], port=args.port[0], persistant=args.persistant[0]))

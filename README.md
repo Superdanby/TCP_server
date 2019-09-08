@@ -17,10 +17,11 @@ Benchmark the server with `make` or `./benchmark.sh [server ip address] [port] [
 
 ## Performance
 
-### With a `printf` system call:
-The server processes around 700 requests per second on Fedora 30, i7-8705g.
+On Fedora 30, i7-8705g:
 
-### Without doing anything:
-The server processes around 4400 requests per second on Fedora 30, i7-8705g.
+| messages per connection | with `printf` system call | without any systemcall |
+| :---: | :---: | :---: |
+| 1 | 730 requests per second | 5250 requests per second |
+| 10000 | 870 requests per second | 21000 requests per second |
 
 Note that the number of client processes will have an impact on the number of requests received by the server.
