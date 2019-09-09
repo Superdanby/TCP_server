@@ -32,7 +32,7 @@ async def tcp_echo_client(message, server=None, port=None):
     writer.close()
     await writer.wait_closed()
 
-async def tcp_echo_client_persistant(message, server=None, port=None, persistant=10000):
+async def tcp_echo_client_persistent(message, server=None, port=None, persistent=10000):
     global tcnt, rcnt
     reader, writer = await asyncio.open_connection(
         server, port)
@@ -47,7 +47,7 @@ async def tcp_echo_client_persistant(message, server=None, port=None, persistant
         # print(f'Received: {data.decode()!r}')
         rcnt = rcnt + 1
 
-        if tcnt % persistant == 0:
+        if tcnt % persistent == 0:
             writer.write("close".encode())
             tcnt = tcnt + 1
             break
@@ -56,11 +56,11 @@ async def tcp_echo_client_persistant(message, server=None, port=None, persistant
     writer.close()
     await writer.wait_closed()
 
-async def main(server='127.0.0.1', port=8888, persistant=0):
+async def main(server='127.0.0.1', port=8888, persistent=0):
     asyncio.create_task(statistics())
     while True:
-        if persistant != 0:
-            await tcp_echo_client_persistant('GET foo\n', server=server, port=port)
+        if persistent != 0:
+            await tcp_echo_client_persistent('GET foo\n', server=server, port=port)
         else:
             await tcp_echo_client('GET foo\n', server=server, port=port)
 
@@ -69,9 +69,9 @@ async def main(server='127.0.0.1', port=8888, persistant=0):
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
-parser.add_argument('persistant', type=int, default=0, nargs='?', help='number of messages transmitted before closing connection')
+parser.add_argument('persistent', type=int, default=0, nargs='?', help='number of messages transmitted before closing connection')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    asyncio.run(main(server=args.address[0], port=args.port[0], persistant=args.persistant))
+    asyncio.run(main(server=args.address[0], port=args.port[0], persistent=args.persistent))

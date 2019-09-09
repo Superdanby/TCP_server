@@ -2,8 +2,8 @@
 
 delay=1
 args=("$@")
-persistant=${args[3]}
-[[ -z $persistant ]] && persistant=0 || persistant_bool='--persistant'
+persistent=${args[3]}
+[[ -z $persistent ]] && persistent=0 || persistent_bool='--persistent'
 
 re0='^[0-9]{,3}\.[0-9]{,3}\.[0-9]{,3}\.[0-9]{,3}$'
 re1='^[0-9]+$'
@@ -12,7 +12,7 @@ re3='^[0-9]*$'
 
 print_invalid () {
     printf "Invalid input!\n" >& 2;
-    printf "Usage: $0 address port N(the number of seconds to benchmark, N must not be less than 10) persistant(number of messages transmitted before closing connection)\n" >& 2
+    printf "Usage: $0 address port N(the number of seconds to benchmark, N must not be less than 10) persistent(number of messages transmitted before closing connection)\n" >& 2
 }
 
 setup () {
@@ -34,11 +34,11 @@ setup () {
 
 main () {
     N_1_threads=$(grep processor /proc/cpuinfo | tail -n 1 | awk '{print $NF}')
-    (python3 server.py $address $port $persistant_bool > /dev/null & sleep $(( $period + $delay )); kill "$(jobs -p)" ) &
+    (python3 server.py $address $port $persistent_bool > /dev/null & sleep $(( $period + $delay )); kill "$(jobs -p)" ) &
 
     sleep $delay
     for i in $(seq 1 $N_1_threads); do
-        python3 client.py $address $port $persistant > /dev/null 2>&1 &
+        python3 client.py $address $port $persistent > /dev/null 2>&1 &
     done
 
     sleep $period
