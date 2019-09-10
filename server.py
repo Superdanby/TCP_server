@@ -70,7 +70,10 @@ async def handle_query(reader, writer):
         message = data.decode()
         addr = writer.get_extra_info('peername')
         cmprs = writer.get_extra_info('compression')
-        print(f"Received {message!r} from {addr!r}, compression: {cmprs}")
+        print(f"Received {message!r} from {addr!r}, compression: {cmprs}, ateof: {reader.at_eof()}")
+        if reader.at_eof():
+            reader._eof = False
+            continue
 
         asyncio.create_task(respond(writer, message, receive_cnt))
         receive_cnt = receive_cnt + 1
