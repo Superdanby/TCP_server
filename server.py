@@ -2,15 +2,20 @@ import asyncio
 import argparse
 import sys
 import queue
+import heapq
 
-cnt = 0
 period = 10
 q = queue.Queue(maxsize=period)
 qsize = 0
 period_cnt = 0
+response_queue = []
+rq_size = 0 # size of response queue
+tcnt = 0
+receive_cnt = 0
+cnt = 0
 
 async def statistics():
-    global cnt, period_cnt, qsize
+    global cnt, period_cnt, qsize, sec
     while True:
         if qsize == period:
             period_cnt = period_cnt - q.get()
@@ -22,9 +27,13 @@ async def statistics():
         print(f"Processed per second: {period_cnt / qsize}\n", file=sys.stderr)
         await asyncio.sleep(1)
 
-async def proton_api(message, cmd='printf'):
+async def proton_api(message, cmd='printf') -> str:
+    return "200 permit\n"
+    return "200 reject\n"
+    return "500 permit\n"
+    return "400 permit\n"
     proc = await asyncio.create_subprocess_shell(
-        cmd + ' "200 foo\n"',
+        cmd + ' "200 wow\n"',
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE)
 
@@ -35,28 +44,36 @@ async def proton_api(message, cmd='printf'):
         print(f'[stdout]\n{stdout.decode()}')
     if stderr:
         print(f'[stderr]\n{stderr.decode()}')
-    return stdout
+    return stdout.decode()
+    # return stdout
+
+async def respond(writer, message, receive_cnt):
+    # wait for response from Proton API
+    response = await proton_api(message)
+
+    # Check out the ENCODING section of www.postfix.org/tcp_table.5.html
+    global tcnt, cnt, rq_size
+    heapq.heappush(response_queue, [receive_cnt, response.encode()])
+    rq_size = rq_size + 1
+    while rq_size != 0 and response_queue[0][0] == tcnt:
+        _, leaving = heapq.heappop(response_queue)
+        tcnt = tcnt + 1
+        cnt = cnt + 1
+        rq_size = rq_size - 1
+        writer.write(leaving)
+        await writer.drain()
 
 async def handle_query(reader, writer):
-    global cnt
+    global receive_cnt
     while True:
-        data = await reader.read(100000000000)
+        data = await reader.readline()
         message = data.decode()
-        if message == "close":
-            break
         addr = writer.get_extra_info('peername')
         cmprs = writer.get_extra_info('compression')
-
-        # print(f"Received {message!r} from {addr!r}")
         print(f"Received {message!r} from {addr!r}, compression: {cmprs}")
 
-        # wait for response from Proton API
-        response = await proton_api(message)
-        # response = "yee".encode()
-
-        writer.write(response)
-        await writer.drain()
-        cnt = cnt + 1
+        asyncio.create_task(respond(writer, message, receive_cnt))
+        receive_cnt = receive_cnt + 1
 
     print("Close the connection")
     writer.close()
