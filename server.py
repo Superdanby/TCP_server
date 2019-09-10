@@ -5,9 +5,9 @@ import queue
 import heapq
 
 period = 10
-q = queue.Queue(maxsize=period)
-qsize = 0
-period_cnt = 0
+# q = queue.Queue(maxsize=period)
+# qsize = 0
+# period_cnt = 0
 response_queue = []
 rq_size = 0 # size of response queue
 tcnt = 0
@@ -15,16 +15,18 @@ receive_cnt = 0
 cnt = 0
 
 async def statistics():
-    global cnt, period_cnt, qsize, sec
+    # global cnt, period_cnt, qsize, sec, tcnt
+    global cnt, tcnt
     while True:
-        if qsize == period:
-            period_cnt = period_cnt - q.get()
-            qsize = qsize - 1
-        period_cnt = period_cnt + cnt
-        qsize = qsize + 1
-        q.put(cnt)
-        cnt = 0
-        print(f"Processed per second: {period_cnt / qsize}\n", file=sys.stderr)
+        # if qsize == period:
+        #     period_cnt = period_cnt - q.get()
+        #     qsize = qsize - 1
+        # period_cnt = period_cnt + cnt
+        # qsize = qsize + 1
+        # q.put(cnt)
+        # cnt = 0
+        # print(f"Processed per second: {period_cnt / qsize}, total processed: {tcnt}\n", file=sys.stderr)
+        print(f"Total processed: {tcnt}\n", file=sys.stderr)
         await asyncio.sleep(1)
 
 async def proton_api(message, cmd='printf') -> str:
