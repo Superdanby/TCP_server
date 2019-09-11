@@ -1,53 +1,62 @@
 import asyncio
 import argparse
+import multiprocessing as mp
 
-tcnt = 0
-rcnt = 0
-
-async def statistics():
-    cnt = 0
-    while True:
-        print(f"Sent: {tcnt}\n")
-        print(f"Received: {rcnt}\n")
-        if cnt is not 0:
-            print(f"Received per second: {rcnt / cnt}\n")
-        await asyncio.sleep(1)
-        cnt = cnt + 1
-
-async def get_response(reader):
-    global rcnt
-    while True:
-        reader._eof = False
+async def get_response(reader, writer, N=1):
+    rcnt = 0
+    while rcnt < N:
+        print(f'rcnt: {rcnt}, N: {N}')
         data = await reader.readline()
         print(f'Received: {data.decode()!r}')
         rcnt = rcnt + 1
 
-async def tcp_echo_client_persistent(message, server=None, port=None):
-    global tcnt
+async def tcp_client(message, server=None, port=None, N=1):
+    # global tcnt
+    tcnt = 0
     reader, writer = await asyncio.open_connection(server, port)
-    asyncio.create_task(get_response(reader))
+    print(N)
+    blocking = asyncio.create_task(get_response(reader, writer, N))
 
-    while True:
-        # print(f'Send: {message!r}')
+    while tcnt < N:
+        print(f'Send: {message!r}')
         writer.write(message.encode())
         await writer.drain()
         tcnt = tcnt + 1
+    done, pending = await asyncio.wait({blocking})
+    while blocking not in done:
+        done, pending = await asyncio.wait({blocking})
 
-    # print('Close the connection')
+    print('Close the connection')
     writer.close()
     await writer.wait_closed()
 
-async def main(server='127.0.0.1', port=8888):
-    asyncio.create_task(statistics())
-    while True:
-        await tcp_echo_client_persistent('GET foo\n', server=server, port=port)
+def async_entry(message, server=None, port=None, N=1):
+    asyncio.run(tcp_client(message, server=server, port=port, N=N))
+
+def main(server='127.0.0.1', port=8888, messages=1, concurrency=None):
+    messages_per_task = messages // concurrency
+    messages_per_task = messages_per_task + 1
+    decrement = messages % concurrency
+
+    process_queue = []
+    for i in range(concurrency):
+        if i == decrement:
+            messages_per_task = messages_per_task - 1
+        print(f'assigned: {messages_per_task}')
+        process_queue.append(mp.Process(target=async_entry, args=('GET foo\n',), kwargs={'server': server, 'port': port, 'N': messages_per_task}))
+        process_queue[i].start()
+
+    for p in process_queue:
+        p.join()
 
 # get server address and port
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
+parser.add_argument('messages', type=int, default=1, nargs='?', help='total number of messages to send')
+parser.add_argument('concurrency', type=int, default=1, nargs='?', help='number of messages to send at a time')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    asyncio.run(main(server=args.address[0], port=args.port[0]))
+    main(server=args.address[0], port=args.port[0], messages=args.messages, concurrency=args.concurrency)
