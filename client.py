@@ -71,8 +71,8 @@ def main(server='127.0.0.1', port=8888, messages=1, concurrency=None):
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
-parser.add_argument('messages', type=int, default=1, nargs='?', help='total number of messages to send')
-parser.add_argument('concurrency', type=int, default=1, nargs='?', help='number of messages to send at a time')
+parser.add_argument('messages', type=int, default=1, nargs='?', help='total number of messages to send, defaults to 1')
+parser.add_argument('concurrency', type=int, default=1, nargs='?', help='number of messages to send at a time, defaults to 1')
 
 args = parser.parse_args()
 
