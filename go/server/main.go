@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -14,10 +13,11 @@ import (
 )
 
 var (
-	counter uint64
-	active  int64
+	counter           uint64
+	active            int64
+	processedRequests int64
 
-	maxConcurrentRequests = 100
+	maxConcurrentRequests = 1000
 	doSystemCall          = false
 
 	serverIPAddress = "127.0.0.1"
@@ -49,6 +49,7 @@ func main() {
 	// init
 	counter = 0
 	active = 0
+	processedRequests = 0
 	maxConcurrencyLimit := make(chan bool, maxConcurrentRequests)
 
 	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 100 // connect: can't assign requested address
@@ -89,7 +90,7 @@ func main() {
 
 func stat() {
 	for {
-		log.Printf("Total connections since start %d, currently active connections %d\n", counter, atomic.LoadInt64(&active))
+		log.Printf("Total connections since start %d, currently active connections %d, total processed requests %d\n", counter, atomic.LoadInt64(&active), atomic.LoadInt64((&processedRequests)))
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -106,6 +107,85 @@ func newServer(address string) (server *net.TCPListener, err error) {
 	}
 
 	return tcpListener, nil
+}
+
+// handle TCP connection
+func handler(_conn *net.TCPConn, maxConcurrencyLimit <-chan bool) {
+	atomic.AddInt64(&active, 1)
+	conn := newConnection(_conn)
+	log.Printf("new connection id %d, remote %s, local %s\n", conn.getID(), conn.RemoteAddr(), conn.LocalAddr().String())
+
+	defer func(conn *connection) {
+		// id := conn.getID()
+		// remoteAddr := conn.RemoteAddr()
+		// log.Printf("closing connection %d, %s\n", id, remoteAddr)
+		err := conn.Close()
+		if err != nil {
+			log.Fatalln("closing connection error", err)
+		}
+		// log.Printf("connection %d, %s closed\n", id, remoteAddr)
+		<-maxConcurrencyLimit
+		// log.Println("channel freed")
+		atomic.AddInt64(&active, -1)
+	}(conn)
+
+	err := conn.processConnection()
+	if err != nil {
+		log.Printf("connection %d, %s has error\n", conn.getID(), err.Error())
+	}
+}
+
+// handle data IO for a TCP connection
+func (c *connection) processConnection() error {
+	scanner := bufio.NewScanner(c.TCPConn)
+	inp := make(chan string, 100000) // use buffered channel
+	done := make(chan bool)
+	go requestProcessingQueue(c, inp, done)
+
+	// Read from connection with line split
+	// TODO: max idle time?
+	for scanner.Scan() {
+		buf := scanner.Bytes() // get request
+		inp <- string(buf)     // push to work queue
+	}
+	done <- true // when the connection is closed by client, let the work queue know
+	if scanner.Err() != nil {
+		log.Fatalln("scanner error", scanner.Err())
+	}
+
+	<-done // wait for the work queue to finish
+
+	return nil
+}
+
+// Handle request
+func requestProcessingQueue(c *connection, inp <-chan string, done chan bool) {
+	for {
+		select {
+		case req := <-inp: // take requests
+			// process request
+			atomic.AddInt64(&processedRequests, 1)
+			fmt.Println(req)
+
+			if doSystemCall {
+				systemCall()
+			}
+
+			// send out reply
+			// n, err := c.send("200", "foo")
+			_, err := c.send200Response("foo")
+			if err != nil {
+				log.Fatalln("send response error", err)
+			}
+			// log.Println("Response count", n)
+
+		case <-done: // when inp is empty and done is received, stop the work queue
+			goto cleanup
+		}
+	}
+
+cleanup:
+	done <- true
 }
 
 func systemCall() {
@@ -132,80 +212,4 @@ func systemCall() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-}
-
-func handler(_conn *net.TCPConn, maxConcurrencyLimit <-chan bool) {
-	atomic.AddInt64(&active, 1)
-	conn := newConnection(_conn)
-	log.Printf("new connection id %d, remote %s, local %s\n", conn.getID(), conn.RemoteAddr(), conn.LocalAddr().String())
-
-	defer func(conn *connection) {
-		// id := conn.getID()
-		// remoteAddr := conn.RemoteAddr()
-		// log.Printf("closing connection %d, %s\n", id, remoteAddr)
-		err := conn.Close()
-		if err != nil {
-			log.Fatalln("closing connection error", err)
-		}
-		// log.Printf("connection %d, %s closed\n", id, remoteAddr)
-		<-maxConcurrencyLimit
-		log.Println("channel freed")
-		atomic.AddInt64(&active, -1)
-	}(conn)
-
-	err := conn.decodeConnection()
-	if err != nil {
-		log.Printf("connection %d, %s has error\n", conn.getID(), err.Error())
-	}
-}
-
-type connection struct {
-	id uint64
-
-	*net.TCPConn // inheritence
-}
-
-func newConnection(c *net.TCPConn) *connection {
-	return &connection{
-		id:      atomic.AddUint64(&counter, 1),
-		TCPConn: c,
-	}
-}
-
-func (c *connection) getID() uint64 {
-	return c.id
-}
-
-func (c *connection) send(code, msg string) (int, error) {
-	var buf = bytes.NewBufferString(code + " " + msg + "\n")
-
-	return c.Write(buf.Bytes())
-}
-
-func (c *connection) decodeConnection() error {
-	scanner := bufio.NewScanner(c.TCPConn)
-
-	// Read from connection with line split
-	// TODO: max idle time?
-	for scanner.Scan() {
-		buf := scanner.Bytes()
-		fmt.Printf("%s\n", string(buf))
-
-		if doSystemCall {
-			systemCall()
-		}
-
-		// send out reply
-		// n, err := c.send("200", "foo")
-		_, err := c.send("200", "foo")
-		if err != nil {
-			log.Fatalln("send response error", err)
-		}
-		// log.Println("Response count", n)
-	}
-	if scanner.Err() != nil {
-		log.Fatalln("scanner error", scanner.Err())
-	}
-
-	return nil
 }

@@ -26,4 +26,9 @@ positional arguments:
 
 On Fedora 30, i7-8705g(4C8T, @3.10GHz):
 
-47k ~ 50k requests per second
+* 47k ~ 50k requests per second
+
+On Macbook Pro 15, Intel(R) Core(TM) i7-9750H CPU 6C12T @ 2.60GHz:
+
+* python (concurrency = 12): 51000 qps
+* golang (concurrency = 12): 80000 qps (with printing debug messages), 103000 (without printing debug messages)
