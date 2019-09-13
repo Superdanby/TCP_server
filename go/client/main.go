@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -96,18 +95,19 @@ func persistenceRequestTask(messagesCount int) {
 	receiveResponse := func(done chan<- bool, reader *bufio.Reader) {
 		for i := 0; i < messagesCount; i++ {
 			// listen for reply
-			message, err := reader.ReadString('\n')
+			_, err := reader.ReadString('\n')
+			// message, err := reader.ReadString('\n')
 			if err != nil {
 				log.Fatalln(err)
 			}
-			fmt.Print(message)
+			// fmt.Print(message)
 		}
 		done <- true
 	}
 	go receiveResponse(done, reader)
 
 	for i := 0; i < messagesCount; i++ {
-		str := sendRequest("key") // make requests
+		str := sendRequest("12345") // make requests
 		// send to socket
 		// n, err := conn.Write([]byte(str))
 		_, err = conn.Write([]byte(str))

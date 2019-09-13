@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -158,6 +157,10 @@ func (c *connection) processConnection() error {
 	return nil
 }
 
+func apiCall(req string) {
+
+}
+
 // Handle request
 func requestProcessingQueue(c *connection, inp <-chan string, done chan bool) {
 	for {
@@ -165,10 +168,12 @@ func requestProcessingQueue(c *connection, inp <-chan string, done chan bool) {
 		case req := <-inp: // take requests
 			// process request
 			atomic.AddInt64(&processedRequests, 1)
-			fmt.Println(req)
+			// fmt.Println(req)
 
 			if doSystemCall {
 				systemCall()
+			} else {
+				apiCall(req)
 			}
 
 			// send out reply
