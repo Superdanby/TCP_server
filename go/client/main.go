@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 )
 
@@ -50,7 +52,17 @@ func parseCommandLineArguments() {
 
 }
 
+var cpuprofile = "cpuprofile"
+
 func main() {
+	flag.Parse()
+	f, err := os.Create(cpuprofile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
 	parseCommandLineArguments()
 
 	// runtime.GOMAXPROCS(1)
@@ -70,7 +82,6 @@ func main() {
 // start making requests to server
 func hit(blocking chan<- bool) {
 	log.Println("Start")
-	runtime.LockOSThread()
 
 	if isPersistenceMode {
 		persistenceRequestTask(totalMessages / concurrentRequests)
@@ -83,8 +94,11 @@ func hit(blocking chan<- bool) {
 
 // use persistent connection
 func persistenceRequestTask(messagesCount int) {
+	runtime.LockOSThread()
+
 	// connect to this socket
-	conn, err := net.Dial("tcp", serverIPAddress+serverPort)
+	addr, err := net.ResolveTCPAddr("tcp", serverPort)
+	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -95,7 +109,8 @@ func persistenceRequestTask(messagesCount int) {
 	receiveResponse := func(done chan<- bool, reader *bufio.Reader) {
 		for i := 0; i < messagesCount; i++ {
 			// listen for reply
-			_, err := reader.ReadString('\n')
+			// _, err := reader.ReadString('\n')
+			_, _, err := reader.ReadLine()
 			// message, err := reader.ReadString('\n')
 			if err != nil {
 				log.Fatalln(err)
@@ -107,7 +122,7 @@ func persistenceRequestTask(messagesCount int) {
 	go receiveResponse(done, reader)
 
 	for i := 0; i < messagesCount; i++ {
-		str := sendRequest("12345") // make requests
+		str := sendRequest("henrydanbysuperdanby@protonmail.com") // make requests
 		// send to socket
 		// n, err := conn.Write([]byte(str))
 		_, err = conn.Write([]byte(str))

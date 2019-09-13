@@ -23,6 +23,10 @@ func (c *connection) getID() uint64 {
 	return c.id
 }
 
+func generate200Response(msg string) string {
+	return "200 " + msg + "\n"
+}
+
 func (c *connection) send200Response(msg string) (int, error) {
 	var buf = bytes.NewBufferString("200 " + msg + "\n")
 

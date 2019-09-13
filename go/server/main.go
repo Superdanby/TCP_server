@@ -144,8 +144,8 @@ func (c *connection) processConnection() error {
 	// Read from connection with line split
 	// TODO: max idle time?
 	for scanner.Scan() {
-		buf := scanner.Bytes() // get request
-		inp <- string(buf)     // push to work queue
+		buf := scanner.Text() // get request
+		inp <- buf            // push to work queue
 	}
 	done <- true // when the connection is closed by client, let the work queue know
 	if scanner.Err() != nil {
