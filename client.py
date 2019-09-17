@@ -53,7 +53,7 @@ def main(server='127.0.0.1', port=8888, messages=1, concurrency=None):
         if i == decrement:
             messages_per_task = messages_per_task - 1
         # print(f'assigned: {messages_per_task}')
-        process_queue.append(mp.Process(target=async_entry, args=('GET foo\n',), kwargs={'server': server, 'port': port, 'N': messages_per_task}))
+        process_queue.append(mp.Process(target=async_entry, args=('GET foo@bar\n',), kwargs={'server': server, 'port': port, 'N': messages_per_task}))
         process_queue[i].start()
 
 
