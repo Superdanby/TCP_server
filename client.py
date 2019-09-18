@@ -23,12 +23,15 @@ async def tcp_client(message, server=None, port=None, N=1):
     while tcnt < N:
         # print(f'Send: {message!r}')
         # send requests
+        # time.sleep(1/10000000)
         writer.write(message.encode())
         await writer.drain()
         tcnt = tcnt + 1
 
     if writer.can_write_eof():
         writer.write_eof()
+        # await writer.drain()
+        print("eof sent")
     print("finish writing")
 
     # wait for all the responses to be read

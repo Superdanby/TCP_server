@@ -1,7 +1,9 @@
 import asyncio
 import argparse
+import cProfile, pstats, io
+from pstats import SortKey
 
-semaphore = 5e4
+semaphore = 3e4
 
 async def respond(writer, message, api_reader, api_writer, lock):
     """Wait for the results from proton_api and send it to the client, writes and reads with Proton API is protected with a lock to ensure FIFO order"""
@@ -44,17 +46,18 @@ async def respond(writer, message, api_reader, api_writer, lock):
             if response[0:7] == 'Error: ':
                 Error = response[7:]
             # print(f'HTTP header> {line}')
-
     if Error:
         status_code = status_code.decode('utf-8').split(' ', 2)[1]
     else:
         status_code, Error = status_code.decode('utf-8').split(' ', 1)[1].split(' ', 1)
-
+    # status_code, Error = status_code.decode('utf-8').split(' ', 1)[1].split(' ', 1)
+    # status_code = status_code.decode('utf-8')
+    # status_code = "212".split('1')[0]
     # permit
     if status_code[0] == '2':
         response = "200 permit\n"
     # reject
-    if status_code == '422':
+    elif status_code == '422':
         response = "200 reject\n"
     else: # temporary rejects
         response = "400 Proton API: " + status_code + " " + Error + "\n"
@@ -70,6 +73,9 @@ async def respond(writer, message, api_reader, api_writer, lock):
 
 async def handle_query(reader, writer):
     """This function reads request data from the client after a connection is established. After reading one request, it will initiate the respond() function to process the request and send it back, but instead of waiting respond() to finish its task, this function will continue to read the next request immediately."""
+    # enable profiler
+    # pr = cProfile.Profile()
+    # pr.enable()
     global semaphore
     retry_api = True
     # open tcp connection to localhost:443
@@ -88,10 +94,6 @@ async def handle_query(reader, writer):
         data = await reader.readline()
         message = data.decode()
 
-        # reset connection when EOF reached
-        if reader.at_eof():
-            break
-
         # the server can handle only around 20k requests per second, creating too many tasks will slow down the asyncio scheduler
         while semaphore == 0:
             # semaphore is initialized with 50k, which takes about 2.5s to process all requests, sleep for 1 second have a smaller impact on performance compared to sleep for 0 seconds
@@ -99,6 +101,10 @@ async def handle_query(reader, writer):
         # non blocking function call to respond()
         non_blocking = asyncio.create_task(respond(writer, message, api_reader, api_writer, lock))
         semaphore = semaphore - 1
+
+        # reset connection when EOF reached
+        if reader.at_eof():
+            break
 
     # wait for the last response to be read by client
     done, pending = await asyncio.wait({non_blocking})
@@ -110,6 +116,13 @@ async def handle_query(reader, writer):
         writer.write_eof()
     print("Close the connection")
     writer.close()
+    # disable profiler
+    # pr.disable()
+    # s = io.StringIO()
+    # sortby = SortKey.CUMULATIVE
+    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    # ps.print_stats()
+    # print(s.getvalue())
 
 async def main(address='127.0.0.1', port=8888):
     server = await asyncio.start_server(handle_query, address, port)
