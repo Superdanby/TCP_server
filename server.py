@@ -2,10 +2,38 @@ import asyncio
 import argparse
 import cProfile, pstats, io
 from pstats import SortKey
+import ssl
+# import time
 
-semaphore = 3e4
+semaphore = 3e4 # limit number of requests from client
+connection_lock = asyncio.Lock() # establish a connection to API one at a time
 
-async def respond(writer, message, api_reader, api_writer, lock):
+# disable certificate check
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
+async def api_connect(client_writer=None):
+    """Create connections to API"""
+    retry_api = True
+    # establish a connection to API one at a time
+    async with connection_lock:
+        while retry_api:
+            if client_writer and client_writer.transport.is_closing():
+                print("Client connection lost. Abort API connection establishment.")
+                break
+            retry_api = False
+            try:
+                api_reader, api_writer = await asyncio.open_connection('localhost', 443, ssl=ctx)
+                print("API connection established!")
+            except Exception as e:
+                print("Failed to connect to API!")
+                print(e)
+                retry_api = True
+                await asyncio.sleep(5)
+    return [api_reader, api_writer]
+
+async def respond(writer, message, api_connection, lock):
     """Wait for the results from proton_api and send it to the client, writes and reads with Proton API is protected with a lock to ensure FIFO order"""
     global semaphore
     # writer.write("200 permit\n".encode())
@@ -13,63 +41,71 @@ async def respond(writer, message, api_reader, api_writer, lock):
     # return
 
     query = (
-        f"GET {'/mail/incoming/rcpt?Email=' + message[4:-1]} HTTP/1.1\r\n"
+        f"GET {'/api/mail/incoming/recipient?Email=' + message[4:-1]} HTTP/1.1\r\n"
+        f"Host: localhost\r\n"
+        f"Accept: */*\r\n"
         f"\r\n"
-    )
-    # print(query.encode())
-    api_writer.write(query.encode('utf-8'))
-    Error = None
+    ).encode('utf-8')
+
+    # start_time = time.time()
 
     # make sure requests to proton api are FIFO
     async with lock:
-        # prevent the server from outputing too much error caused by connection failure, thus not serving new requests
-        try:
-            await writer.drain()
-        except:
-            pass
+        resend = True
+        while resend:
+            api_reader, api_writer = api_connection
+            resend = False
+            api_writer.write(query)
+            # prevent the server from outputing too much error caused by connection failure, thus not serving new requests
+            try:
+                await api_writer.drain()
+            except:
+                pass
 
-        # get status code
-        line = await api_reader.readline()
-        status_code = line
-        # print(line)
+            # get response form API
+            line = await api_reader.read(20000)
+            api_response = line.decode('utf-8')
+            if api_response == '':
+                print("API connection interrupted!")
+                api_writer.close()
+                await api_writer.wait_closed()
+                api_connection[0], api_connection[1] = await api_connect(writer)
+                print("Reconnected to API!")
+                resend = True
 
+        status_code = api_response[9:12] # HTTP/1.1 xxx
+        # permit
+        if status_code[0] == '2':
+            response = "200 permit\n"
+        # reject
+        else:
+            try:
+                Error = api_response.split('"Error": "', 1)[1].split('"', 1)[0]
+                if status_code == '422':
+                    await api_reader.read(100) # Remove the weird additional message
+                    response = "200 reject\n"
+                else: # temporary rejects
+                    response = "400 " + status_code + " " + Error + "\n"
+            except IndexError:
+                if status_code == '400':
+                    print("Bad request! Reseting connection...")
+                    api_writer.close()
+                    await api_writer.wait_closed()
+                    api_connection[0], api_connection[1] = await api_connect(writer)
+                    print("Reconnected to API!")
+                    response = "500 bad request\n"
+                else: # temporary rejects
+                    response = "400 " + api_response.split('\r\n', 1)[0] + "\n"
 
-        # get Error field
-        while True:
-            line = await api_reader.readline()
-            if not line:
-                break
-            # print(line)
-            response = line.decode('utf-8').rstrip()
-            if not response:
-                break
-            if response[0:7] == 'Error: ':
-                Error = response[7:]
-            # print(f'HTTP header> {line}')
-    if Error:
-        status_code = status_code.decode('utf-8').split(' ', 2)[1]
-    else:
-        status_code, Error = status_code.decode('utf-8').split(' ', 1)[1].split(' ', 1)
-    # status_code, Error = status_code.decode('utf-8').split(' ', 1)[1].split(' ', 1)
-    # status_code = status_code.decode('utf-8')
-    # status_code = "212".split('1')[0]
-    # permit
-    if status_code[0] == '2':
-        response = "200 permit\n"
-    # reject
-    elif status_code == '422':
-        response = "200 reject\n"
-    else: # temporary rejects
-        response = "400 Proton API: " + status_code + " " + Error + "\n"
-
-    # print(response)
-    writer.write(response.encode())
+        # reply to client
+        writer.write(response.encode())
     # prevent the server from outputing too much error caused by connection failure, thus not serving new requests
     try:
         await writer.drain()
     except:
         pass
     semaphore = semaphore + 1
+    # print(time.time() - start_time)
 
 async def handle_query(reader, writer):
     """This function reads request data from the client after a connection is established. After reading one request, it will initiate the respond() function to process the request and send it back, but instead of waiting respond() to finish its task, this function will continue to read the next request immediately."""
@@ -77,29 +113,20 @@ async def handle_query(reader, writer):
     # pr = cProfile.Profile()
     # pr.enable()
     global semaphore
-    retry_api = True
-    # open tcp connection to localhost:443
-    # api_reader, api_writer = await asyncio.open_connection('localhost', 443, ssl=True)
-    while retry_api:
-        retry_api = False
-        try:
-            api_reader, api_writer = await asyncio.open_connection('localhost', 80)
-        except:
-            print("API connection failure!")
-            retry_api = True
-            await asyncio.sleep(0.1)
+
     lock = asyncio.Lock()
+    api_connection = await api_connect(writer) # connect to API
     while True:
-        # read data
+        # read data from client
         data = await reader.readline()
         message = data.decode()
 
         # the server can handle only around 20k requests per second, creating too many tasks will slow down the asyncio scheduler
         while semaphore == 0:
-            # semaphore is initialized with 50k, which takes about 2.5s to process all requests, sleep for 1 second have a smaller impact on performance compared to sleep for 0 seconds
+            # semaphore is initialized with 30k, which takes about 1.5s to process all requests, sleep for 1 second have a smaller impact on performance compared to sleep for 0 seconds
             await asyncio.sleep(1)
         # non blocking function call to respond()
-        non_blocking = asyncio.create_task(respond(writer, message, api_reader, api_writer, lock))
+        non_blocking = asyncio.create_task(respond(writer, message, api_connection, lock))
         semaphore = semaphore - 1
 
         # reset connection when EOF reached
@@ -114,8 +141,12 @@ async def handle_query(reader, writer):
     # close the connection gracefully
     if writer.can_write_eof():
         writer.write_eof()
-    print("Close the connection")
     writer.close()
+    print("Client connection closed.")
+    api_connection[1].close()
+    print("API connection closed.")
+    await api_connection[1].wait_closed()
+    print("API connection closed done.")
     # disable profiler
     # pr.disable()
     # s = io.StringIO()
