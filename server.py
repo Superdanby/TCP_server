@@ -5,8 +5,12 @@ from pstats import SortKey
 import ssl
 # import time
 
-semaphore = 3e4 # limit number of requests from client
-connection_lock = asyncio.Lock() # establish a connection to API one at a time
+# Semaphore locks should use this form to prevent deadlocks:
+# while semaphore == 0:
+#     await asyncio.sleep(0)
+client_semaphore = 3e4 # limit number of requests from client
+api_semaphore = 25 # limit simultaneous connections to API
+connection_lock = None # establish a connection to API one at a time
 
 # disable certificate check
 ctx = ssl.create_default_context()
@@ -15,9 +19,13 @@ ctx.verify_mode = ssl.CERT_NONE
 
 async def api_connect(client_writer=None):
     """Create connections to API"""
+    global api_semaphore
+    api_reader, api_writer = None, None
     retry_api = True
     # establish a connection to API one at a time
     async with connection_lock:
+        while api_semaphore == 0:
+            await asyncio.sleep(0)
         while retry_api:
             if client_writer and client_writer.transport.is_closing():
                 print("Client connection lost. Abort API connection establishment.")
@@ -26,6 +34,7 @@ async def api_connect(client_writer=None):
             try:
                 api_reader, api_writer = await asyncio.open_connection('localhost', 443, ssl=ctx)
                 print("API connection established!")
+                api_semaphore = api_semaphore - 1
             except Exception as e:
                 print("Failed to connect to API!")
                 print(e)
@@ -33,11 +42,21 @@ async def api_connect(client_writer=None):
                 await asyncio.sleep(5)
     return [api_reader, api_writer]
 
+async def api_disconnect(api_writer):
+    """Close connections to API"""
+    global api_semaphore
+    print("API connection closed.")
+    api_writer.close()
+    api_semaphore = api_semaphore + 1
+    await api_writer.wait_closed()
+    print("API connection closed done.")
+
 async def respond(writer, message, api_connection, lock):
     """Wait for the results from proton_api and send it to the client, writes and reads with Proton API is protected with a lock to ensure FIFO order"""
-    global semaphore
+    global client_semaphore
     # writer.write("200 permit\n".encode())
     # await writer.drain()
+    # client_semaphore = client_semaphore + 1
     # return
 
     query = (
@@ -51,6 +70,8 @@ async def respond(writer, message, api_connection, lock):
 
     # make sure requests to proton api are FIFO
     async with lock:
+        if writer.transport.is_closing():
+            return # client connection lost
         resend = True
         while resend:
             api_reader, api_writer = api_connection
@@ -67,9 +88,10 @@ async def respond(writer, message, api_connection, lock):
             api_response = line.decode('utf-8')
             if api_response == '':
                 print("API connection interrupted!")
-                api_writer.close()
-                await api_writer.wait_closed()
+                await api_disconnect(api_writer)
                 api_connection[0], api_connection[1] = await api_connect(writer)
+                if writer.transport.is_closing():
+                    return # client connection lost
                 print("Reconnected to API!")
                 resend = True
 
@@ -89,9 +111,10 @@ async def respond(writer, message, api_connection, lock):
             except IndexError:
                 if status_code == '400':
                     print("Bad request! Reseting connection...")
-                    api_writer.close()
-                    await api_writer.wait_closed()
+                    await api_disconnect(api_writer)
                     api_connection[0], api_connection[1] = await api_connect(writer)
+                    if writer.transport.is_closing():
+                        return # client connection lost
                     print("Reconnected to API!")
                     response = "500 bad request\n"
                 else: # temporary rejects
@@ -104,7 +127,7 @@ async def respond(writer, message, api_connection, lock):
         await writer.drain()
     except:
         pass
-    semaphore = semaphore + 1
+    client_semaphore = client_semaphore + 1
     # print(time.time() - start_time)
 
 async def handle_query(reader, writer):
@@ -112,22 +135,24 @@ async def handle_query(reader, writer):
     # enable profiler
     # pr = cProfile.Profile()
     # pr.enable()
-    global semaphore
+    global client_semaphore
 
     lock = asyncio.Lock()
-    api_connection = await api_connect(writer) # connect to API
+    api_connection = await api_connect(writer) # connect to API; api_connection is a list so that the underlying connection to API can be swapped for all requests already in respond() if must
+    if writer.transport.is_closing():
+        return # client connection lost
     while True:
         # read data from client
         data = await reader.readline()
         message = data.decode()
 
         # the server can handle only around 20k requests per second, creating too many tasks will slow down the asyncio scheduler
-        while semaphore == 0:
-            # semaphore is initialized with 30k, which takes about 1.5s to process all requests, sleep for 1 second have a smaller impact on performance compared to sleep for 0 seconds
+        while client_semaphore == 0:
+            # client_semaphore is initialized with 30k, which takes about 1.5s to process all requests, sleep for 1 second have a smaller impact on performance compared to sleep for 0 seconds
             await asyncio.sleep(1)
         # non blocking function call to respond()
         non_blocking = asyncio.create_task(respond(writer, message, api_connection, lock))
-        semaphore = semaphore - 1
+        client_semaphore = client_semaphore - 1
 
         # reset connection when EOF reached
         if reader.at_eof():
@@ -143,10 +168,8 @@ async def handle_query(reader, writer):
         writer.write_eof()
     writer.close()
     print("Client connection closed.")
-    api_connection[1].close()
-    print("API connection closed.")
-    await api_connection[1].wait_closed()
-    print("API connection closed done.")
+    if api_connection[1]:
+        await api_disconnect(api_connection[1])
     # disable profiler
     # pr.disable()
     # s = io.StringIO()
@@ -156,6 +179,8 @@ async def handle_query(reader, writer):
     # print(s.getvalue())
 
 async def main(address='127.0.0.1', port=8888):
+    global connection_lock
+    connection_lock = asyncio.Lock()
     server = await asyncio.start_server(handle_query, address, port)
 
     addr = server.sockets[0].getsockname()
