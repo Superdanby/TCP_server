@@ -24,9 +24,10 @@ async def respond(writer, message, api_session, response_queue, receive_cnt, tra
     # print('https://localhost/api/mail/incoming/recipient?Email=' + message[4:-1])
     while True:
         try:
+            # resp = await api_session.get('https://https://www.google.com')
             resp = await api_session.get('https://localhost/api/mail/incoming/recipient?Email=' + message[4:-1])
             async with resp:
-                # print(resp.status)
+                print(resp.status)
                 if resp.status == 200 or resp.status == 204:
                     response = "200 permit\n"
                 elif resp.status == 422:
@@ -111,9 +112,9 @@ async def handle_query(reader, writer, api_session):
     # ps.print_stats()
     # print(s.getvalue())
 
-async def main(address='127.0.0.1', port=8888):
-    api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=25))
-    # api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=25), timeout=aiohttp.ClientTimeout(total=1.0, sock_connect=0.5))
+async def main(address='127.0.0.1', port=8888, connection_limit=1):
+    # api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=connection_limit))
+    api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=connection_limit), timeout=aiohttp.ClientTimeout(total=0.00001, sock_connect=0.00001))
     server = await asyncio.start_server(lambda r, w: handle_query(r, w, api_session), address, port)
 
     addr = server.sockets[0].getsockname()
@@ -126,8 +127,9 @@ async def main(address='127.0.0.1', port=8888):
 parser = argparse.ArgumentParser(description='Specify server address and port')
 parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
+parser.add_argument('max_api_con', type=int, default=25, nargs='?', help='max simultaneous connections to api, defaults to 25')
 args = parser.parse_args()
 # print(args)
 
 if __name__ == '__main__':
-    asyncio.run(main(address=args.address[0], port=args.port[0]))
+    asyncio.run(main(address=args.address[0], port=args.port[0], connection_limit=args.max_api_con))
