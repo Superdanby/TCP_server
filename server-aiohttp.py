@@ -31,14 +31,16 @@ async def respond(writer, message, api_session, response_queue, receive_cnt, tra
                     response = "200 permit\n"
                 elif resp.status == 422:
                     dict = await resp.json()
-                    response = "200 reject\n"
+                    response = "200 reject " + dict['Error'] + "\n"
                 elif resp.status == 400:
-                    response = "500 bad request\n"
-                else:
+                    response = "400 bad request\n"
+                elif 'Error' in dict:
                     response = "400 " + dict['Error'] + "\n"
+                else:
+                    response = "400 " + str(resp.status) + " " + resp.reason + "\n"
             break
         except:
-            # print("connection failed")
+            print("connection failed")
             pass
 
     # insert an element: [incoming order, encoded response]
@@ -111,6 +113,7 @@ async def handle_query(reader, writer, api_session):
 
 async def main(address='127.0.0.1', port=8888):
     api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=25))
+    # api_session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ctx, limit_per_host=25), timeout=aiohttp.ClientTimeout(total=1.0, sock_connect=0.5))
     server = await asyncio.start_server(lambda r, w: handle_query(r, w, api_session), address, port)
 
     addr = server.sockets[0].getsockname()

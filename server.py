@@ -113,9 +113,10 @@ class APIConnection():
                 if 'Transfer-Encoding: chunked' in response and response[-7:] != self.chunked:
                     # print(f"{token} chuncked...")
                     while True:
-                        _ = await api_reader.read(self.read_buffer) # '\r\n0\r\n\r\n'
-                        _ = _.decode()
-                        if _[-7:] == self.chunked:
+                        followup = await api_reader.read(self.read_buffer) # '\r\n0\r\n\r\n'
+                        followup = followup.decode()
+                        response = response + followup
+                        if followup[-7:] == self.chunked:
                             break
                         # print(f"{token} chuncked {_}")
                 break
@@ -159,13 +160,14 @@ async def respond(writer, message, api_connection, response_queue, receive_cnt, 
     await asyncio.sleep(0)
     status_code = api_response[9:12] # HTTP/1.1 xxx
     # permit
-    if status_code[0] == '2':
+    if status_code == '200' or status_code == '204':
         response = "200 permit\n"
     # reject
     elif status_code == '422':
-        response = "200 reject\n"
+        Error = api_response.split('"Error": "', 1)[1].split('"', 1)[0]
+        response = "200 reject " + Error + "\n"
     elif status_code == '400':
-        response = "500 bad request\n"
+        response = "400 bad request\n"
     else:
         try:
             Error = api_response.split('"Error": "', 1)[1].split('"', 1)[0]
