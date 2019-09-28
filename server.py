@@ -272,9 +272,9 @@ parser.add_argument('address', type=str, nargs=1, help='server address')
 parser.add_argument('port', type=int, nargs=1, help='server port')
 parser.add_argument('max_api_con', type=int, default=25, nargs='?', help='max simultaneous connections to api, defaults to 25')
 parser.add_argument('max_client_buf', type=int, default=100, nargs='?', help='max buffered client requests, defaults to 100')
-args = parser.parse_args()
 # print(args)
 
 if __name__ == '__main__':
+    args = parser.parse_args()
     client_semaphore = args.max_client_buf
     asyncio.run(main(address=args.address[0], port=args.port[0], connection_limit=args.max_api_con))

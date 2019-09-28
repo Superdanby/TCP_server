@@ -20,7 +20,7 @@ async def get_response(reader, writer, N=1):
         rcnt = rcnt + 1
     return ret
 
-async def tcp_client(message=None, server=None, port=None, N=1, validate=False):
+async def tcp_client(message=None, server=None, port=None, N=1, validate=False, return_response=False):
     """Send N requests to the server and get the responses asynchronously."""
     rangen = False
     if message is None or validate:
@@ -44,7 +44,7 @@ async def tcp_client(message=None, server=None, port=None, N=1, validate=False):
             answers.append(replies[ranidx])
             # if tcnt % 60 == 59:
             #     message = 'GET bad request\n'
-        print(f"{tcnt}: {message}")
+        print(f"{tcnt}: {message.encode()}")
         writer.write(message.encode())
         await writer.drain()
         tcnt = tcnt + 1
@@ -53,6 +53,11 @@ async def tcp_client(message=None, server=None, port=None, N=1, validate=False):
     done, pending = await asyncio.wait([non_blocking])
     while len(pending) != 0:
         done, pending = await asyncio.wait(pending)
+
+    if return_response:
+        done = done.pop()
+        answers = [x.decode() for x in done.result()]
+
     if validate:
         done = done.pop()
         done = done.result()
@@ -74,6 +79,8 @@ async def tcp_client(message=None, server=None, port=None, N=1, validate=False):
     # await asyncio.sleep(1)
     writer.close()
     await writer.wait_closed()
+    if return_response:
+        return answers
     return received_all
 
 def async_entry(message=None, server=None, port=None, N=1, queue=None, validate=False):
@@ -124,9 +131,9 @@ parser.add_argument('messages', type=int, default=1, nargs='?', help='total numb
 parser.add_argument('concurrency', type=int, default=1, nargs='?', help='number of messages to send at a time, defaults to 1')
 parser.add_argument('--validate', action='store_true', help='validate the responses from server, will affect performance metrics')
 
-args = parser.parse_args()
 
 if __name__ == '__main__':
+    args = parser.parse_args()
     start_time = time.time()
     received_all = main(server=args.address[0], port=args.port[0], messages=args.messages, concurrency=args.concurrency, validate=args.validate)
     stop_time = time.time()
