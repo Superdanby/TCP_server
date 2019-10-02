@@ -121,6 +121,7 @@ func handleConnection(conn net.Conn, api_client *http.Client, client_semaphore c
     defer conn.Close()
     reader := bufio.NewReader(conn)
     writer := bufio.NewWriter(conn)
+    defer writer.Flush()
     var response_queue PriorityQueue
     var receive_cnt, transmit_cnt int64
     var lock sync.Mutex
